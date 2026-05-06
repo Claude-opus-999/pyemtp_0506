@@ -2529,96 +2529,14 @@ class EMTPSolver:
         return total
 
     def _pre_sample_sources(self, n_steps: int) -> None:
-        """Pre-sample independent sources on the simulation time grid.
-
-        When ``pre_sample_sources`` is enabled, scalar source functions are
-        evaluated once for the entire grid and stored in flat arrays.  This
-        removes per-step Python function-call overhead at the cost of
-        evaluating all sources upfront.
-
-        .. note::
-           Pre-sampling changes the *timing* of source function evaluation.
-           Users whose callables depend on external state should keep
-           ``pre_sample_sources=False``.
-        """
-        self._current_source_samples.clear()
-        self._voltage_source_samples.clear()
-
-        t_arr = np.arange(n_steps, dtype=np.float64) * self.dt
-
-        if self.current_sources:
-            for name, src in self.current_sources.items():
-                self._current_source_samples[name] = np.array(
-                    [src.current_at(float(ti)) for ti in t_arr],
-                    dtype=np.float64,
-                )
-
-        if self.voltage_sources:
-            for name, vs in self.voltage_sources.items():
-                self._voltage_source_samples[name] = np.array(
-                    [vs.voltage_at(float(ti)) for ti in t_arr],
-                    dtype=np.float64,
-                )
+        """Pre-sample independent sources via RHSEngine (delegated)."""
+        self.rhs_engine.pre_sample_sources(
+            n_steps, self.dt, self.current_sources, self.voltage_sources,
+        )
 
     def _compile_rhs_plan(self) -> RHSPlan:
-        """Pre-compile topological index arrays for fast RHS assembly.
-
-        Builds flat arrays of node indices for reactive branches,
-        current sources, and transformer ports so the per-step RHS
-        construction avoids iterating Python device objects.
-        """
-        plan = RHSPlan()
-
-        # ---- reactive branch history sources ----
-        dyn_names = []
-        dyn_nf = []
-        dyn_nt = []
-        dyn_types = []
-        for name, branch in self.branches.items():
-            et = branch.element_type
-            if et in (ElementType.INDUCTOR, ElementType.CAPACITOR,
-                       ElementType.SERIES_RL, ElementType.NONLINEAR_RESISTOR):
-                dyn_names.append(name)
-                dyn_nf.append(self._indexer.to_compact(branch.node_from))
-                dyn_nt.append(self._indexer.to_compact(branch.node_to))
-                if et == ElementType.NONLINEAR_RESISTOR:
-                    dyn_types.append("NR")
-                elif et == ElementType.SERIES_RL:
-                    dyn_types.append("SRL")
-                else:
-                    dyn_types.append("LC")
-            # R, SW have no Ihist — skip
-
-        plan.dyn_branch_names = dyn_names
-        plan.dyn_branch_nf_idx = np.array(dyn_nf, dtype=int)
-        plan.dyn_branch_nt_idx = np.array(dyn_nt, dtype=int)
-        plan.dyn_branch_type = dyn_types
-
-        # ---- current sources ----
-        is_names = []
-        is_nf = []
-        is_nt = []
-        for name, source in self.current_sources.items():
-            is_names.append(name)
-            is_nf.append(self._indexer.to_compact(source.node_from))
-            is_nt.append(self._indexer.to_compact(source.node_to))
-
-        plan.isource_names = is_names
-        plan.isource_nf_idx = np.array(is_nf, dtype=int)
-        plan.isource_nt_idx = np.array(is_nt, dtype=int)
-
-        # ---- transformer ports ----
-        for name, xfmr in self.transformers.items():
-            plan.xfmr_names.append(name)
-            port_nodes = xfmr.get_port_nodes()
-            nf_arr = np.array([self._indexer.to_compact(nf) for nf, _ in port_nodes],
-                              dtype=int)
-            nt_arr = np.array([self._indexer.to_compact(nt) for _, nt in port_nodes],
-                              dtype=int)
-            plan.xfmr_port_nf_idx.append(nf_arr)
-            plan.xfmr_port_nt_idx.append(nt_arr)
-
-        return plan
+        """Compile RHSPlan via RHSEngine (delegated)."""
+        return self.rhs_engine.compile_plan(self.circuit, self._indexer)
 
     def _build_rhs_fast(self) -> np.ndarray:
         """Build the MNA RHS vector using the pre-compiled RHSPlan.
