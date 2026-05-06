@@ -251,8 +251,6 @@ class EMTPSolver:
         self.use_rhs_plan = bool(use_rhs_plan)
         self.use_multiport_lines = bool(use_multiport_lines)
         self.use_multiport_transformers = bool(use_multiport_transformers)
-        self._rhs_plan: Optional[RHSPlan] = None
-        self._rhs_plan_dirty: bool = True
         self._active_mna_solver_name = _SPARSE_SOLVER_NAME
         if self.ulm_batch_mode not in {'auto', 'parallel', 'serial', 'off'}:
             raise ValueError(
@@ -381,7 +379,6 @@ class EMTPSolver:
         self._ulm_batch_m_rows_v: Optional[np.ndarray] = None
         self._ulm_batch_m_slots_v: Optional[np.ndarray] = None
         self._ulm_batch_m_nodes_v: Optional[np.ndarray] = None
-        self._rhs_buf: Optional[np.ndarray] = None
 
         # ---- 源预采样缓存 ----
         self._current_source_samples: Dict[str, np.ndarray] = {}
@@ -405,7 +402,7 @@ class EMTPSolver:
         self._stamping.mark_dirty()
         self._vs_list = None
         self._vs_index_map = None
-        self._rhs_plan_dirty = True
+        self.rhs_engine.invalidate_plan()
         self.kernel.mark_dirty(reason)
         if not getattr(self, "_is_running", False):
             self._invalidate_results()
@@ -2032,140 +2029,15 @@ class EMTPSolver:
         return eng.finish_G(stamper)
 
     def _build_MNA_rhs(self) -> np.ndarray:
-        """构建 MNA 增广右端向量 [I; E]。
-
-        opt3: 复用 RHS 缓冲区，并在 ULM batch 模式下直接从 batch 数组
-        使用预编译索引表注入线路历史源，避免每步逐线 Python 对象遍历。
-        """
-        n = self._indexer.n
-        m = len(self._vs_list) if self._vs_list else 0
-        N = n + m
-
-        rhs = getattr(self, '_rhs_buf', None)
-        if rhs is None or rhs.shape[0] != N:
-            rhs = np.zeros(N, dtype=np.float64)
-            self._rhs_buf = rhs
-        else:
-            rhs.fill(0.0)
-
-        # ---- 1. 支路历史源 ----
-        for dev in self._devices:
-            dev.stamp_rhs(rhs, self._indexer, self.time)
-
-        # ---- 1b. MultiPortDevice history sources ----
-        self._stamp_multiport_rhs(rhs, self.time)
-
-        # ---- 2. 电流源 ----
-        if self.pre_sample_sources and self._current_source_samples:
-            step_idx = int(round(self.time / self.dt))
-            for source in self.current_sources.values():
-                I_s = float(
-                    self._current_source_samples[source.name][step_idx]
-                )
-                cf = self._indexer.to_compact(source.node_from)
-                ct = self._indexer.to_compact(source.node_to)
-                if cf >= 0:
-                    rhs[cf] -= I_s
-                if ct >= 0:
-                    rhs[ct] += I_s
-        else:
-            for source in self.current_sources.values():
-                I_s = source.current_at(self.time)
-                cf = self._indexer.to_compact(source.node_from)
-                ct = self._indexer.to_compact(source.node_to)
-                if cf >= 0:
-                    rhs[cf] -= I_s
-                if ct >= 0:
-                    rhs[ct] += I_s
-
-        # ---- 3. 传输线历史源 ----
-        batch = getattr(self, '_ulm_batch', None)
-        if batch is not None and self._ulm_batch_k_nodes_v is not None:
-            # np.add.at 对重复节点安全；串接线路中接头节点会被多条线路同时注入。
-            if self._ulm_batch_k_nodes_v.size:
-                np.add.at(
-                    rhs,
-                    self._ulm_batch_k_nodes_v,
-                    -batch.I_hist_k_batch[
-                        self._ulm_batch_k_rows_v,
-                        self._ulm_batch_k_slots_v,
-                    ],
-                )
-            if self._ulm_batch_m_nodes_v.size:
-                np.add.at(
-                    rhs,
-                    self._ulm_batch_m_nodes_v,
-                    -batch.I_hist_m_batch[
-                        self._ulm_batch_m_rows_v,
-                        self._ulm_batch_m_slots_v,
-                    ],
-                )
-
-            # 如有非 batch 线路，仍按 fallback 路径注入。
-            line_iter = getattr(self, '_line_inject_maps_nonbatch', [])
-        else:
-            line_iter = getattr(self, '_line_inject_maps', [])
-
-        for line, k_idx, m_idx, nc, _is_multi, _has_full in line_iter:
-            I_hist_k, I_hist_m = self._get_line_history_sources(line)
-
-            arr = np.asarray(I_hist_k)
-            if arr.ndim == 0:
-                if nc == 1 and k_idx[0] >= 0:
-                    rhs[k_idx[0]] -= float(np.real(arr))
-            else:
-                vals = arr.real.ravel()
-                limit = min(nc, len(k_idx), len(vals))
-                for i in range(limit):
-                    node_idx = k_idx[i]
-                    if node_idx >= 0:
-                        rhs[node_idx] -= float(vals[i])
-
-            arr = np.asarray(I_hist_m)
-            if arr.ndim == 0:
-                if nc == 1 and m_idx[0] >= 0:
-                    rhs[m_idx[0]] -= float(np.real(arr))
-            else:
-                vals = arr.real.ravel()
-                limit = min(nc, len(m_idx), len(vals))
-                for i in range(limit):
-                    node_idx = m_idx[i]
-                    if node_idx >= 0:
-                        rhs[node_idx] -= float(vals[i])
-
-        # ---- 4. UMEC 变压器历史源 ----
-        for xfmr in self.transformers.values():
-            _, I_hist_tf = xfmr.get_norton_equivalent()
-            port_nodes = xfmr.get_port_nodes()
-            for i, (nf_i, nt_i) in enumerate(port_nodes):
-                cf_i = self._indexer.to_compact(nf_i)
-                ct_i = self._indexer.to_compact(nt_i)
-                if cf_i >= 0:
-                    rhs[cf_i] -= I_hist_tf[i]
-                if ct_i >= 0:
-                    rhs[ct_i] += I_hist_tf[i]
-
-        # ---- 5. 电压源激励 E ----
-        if self._vs_list:
-            if self.pre_sample_sources and self._voltage_source_samples:
-                step_idx = int(round(self.time / self.dt))
-                for k, vs in enumerate(self._vs_list):
-                    rhs[n + k] = float(
-                        self._voltage_source_samples[vs.name][step_idx]
-                    )
-            else:
-                for k, vs in enumerate(self._vs_list):
-                    rhs[n + k] = vs.voltage_at(self.time)
-
-        return rhs
+        """Build MNA RHS vector — delegated to RHSEngine."""
+        return self.rhs_engine._build_slow_impl()
 
     def _build_system_matrix(self) -> Tuple[sp.csc_matrix, np.ndarray]:
         """(MNA, rhs) 对: G 由 kernel 管理缓存, rhs 每步重建。"""
         MNA = self.kernel.ensure_matrix()
 
-        if self.use_rhs_plan and (self._rhs_plan_dirty or self._rhs_plan is None):
-            self._rhs_plan = self._compile_rhs_plan()
-            self._rhs_plan_dirty = False
+        if self.use_rhs_plan and (self.rhs_engine.plan_dirty or self.rhs_engine.plan is None):
+            self._compile_rhs_plan()  # stores plan on rhs_engine, sets dirty=False
 
         rhs = (self.rhs_engine.build_fast() if self.use_rhs_plan
                else self.rhs_engine.build())
@@ -2478,140 +2350,8 @@ class EMTPSolver:
         return self.rhs_engine.compile_plan(self.circuit, self._indexer)
 
     def _build_rhs_fast(self) -> np.ndarray:
-        """Build the MNA RHS vector using the pre-compiled RHSPlan.
-
-        This path avoids iterating Python device objects; it walks flat
-        index arrays and looks up scalar values directly.
-        """
-        n = self._indexer.n
-        m = len(self._vs_list) if self._vs_list else 0
-        N = n + m
-        plan = self._rhs_plan
-
-        rhs = getattr(self, '_rhs_buf', None)
-        if rhs is None or rhs.shape[0] != N:
-            rhs = np.zeros(N, dtype=np.float64)
-            self._rhs_buf = rhs
-        else:
-            rhs.fill(0.0)
-
-        # ---- 1. 支路历史源 (flat index arrays) ----
-        n_dyn = len(plan.dyn_branch_names)
-        for k in range(n_dyn):
-            br = self.branches[plan.dyn_branch_names[k]]
-            if plan.dyn_branch_type[k] == "NR":
-                i_eq = getattr(br, 'Ihist', 0.0)
-            else:
-                i_eq = br.Ihist
-            if i_eq == 0.0:
-                continue
-            nf_idx = plan.dyn_branch_nf_idx[k]
-            nt_idx = plan.dyn_branch_nt_idx[k]
-            if nf_idx >= 0:
-                rhs[nf_idx] -= i_eq
-            if nt_idx >= 0:
-                rhs[nt_idx] += i_eq
-
-        # ---- 2. 电流源 ----
-        if self.pre_sample_sources and self._current_source_samples:
-            step_idx = int(round(self.time / self.dt))
-            n_is = len(plan.isource_names)
-            for k in range(n_is):
-                I_s = float(
-                    self._current_source_samples[plan.isource_names[k]][step_idx]
-                )
-                if I_s == 0.0:
-                    continue
-                nf_idx = plan.isource_nf_idx[k]
-                nt_idx = plan.isource_nt_idx[k]
-                if nf_idx >= 0:
-                    rhs[nf_idx] -= I_s
-                if nt_idx >= 0:
-                    rhs[nt_idx] += I_s
-        else:
-            n_is = len(plan.isource_names)
-            for k in range(n_is):
-                source = self.current_sources[plan.isource_names[k]]
-                I_s = source.current_at(self.time)
-                if I_s == 0.0:
-                    continue
-                nf_idx = plan.isource_nf_idx[k]
-                nt_idx = plan.isource_nt_idx[k]
-                if nf_idx >= 0:
-                    rhs[nf_idx] -= I_s
-                if nt_idx >= 0:
-                    rhs[nt_idx] += I_s
-
-        # ---- 3. 传输线历史源 (reuse existing ULM batch path) ----
-        batch = getattr(self, '_ulm_batch', None)
-        if batch is not None and self._ulm_batch_k_nodes_v is not None:
-            if self._ulm_batch_k_nodes_v.size:
-                np.add.at(
-                    rhs, self._ulm_batch_k_nodes_v,
-                    -batch.I_hist_k_batch[
-                        self._ulm_batch_k_rows_v, self._ulm_batch_k_slots_v,
-                    ],
-                )
-            if self._ulm_batch_m_nodes_v.size:
-                np.add.at(
-                    rhs, self._ulm_batch_m_nodes_v,
-                    -batch.I_hist_m_batch[
-                        self._ulm_batch_m_rows_v, self._ulm_batch_m_slots_v,
-                    ],
-                )
-            line_iter = getattr(self, '_line_inject_maps_nonbatch', [])
-        else:
-            line_iter = getattr(self, '_line_inject_maps', [])
-
-        for line, k_idx, m_idx, nc, _is_multi, _has_full in line_iter:
-            I_hist_k, I_hist_m = self._get_line_history_sources(line)
-            arr = np.asarray(I_hist_k)
-            if arr.ndim == 0:
-                if nc == 1 and k_idx[0] >= 0:
-                    rhs[k_idx[0]] -= float(np.real(arr))
-            else:
-                vals = arr.real.ravel()
-                limit = min(nc, len(k_idx), len(vals))
-                for i in range(limit):
-                    if k_idx[i] >= 0:
-                        rhs[k_idx[i]] -= float(vals[i])
-            arr = np.asarray(I_hist_m)
-            if arr.ndim == 0:
-                if nc == 1 and m_idx[0] >= 0:
-                    rhs[m_idx[0]] -= float(np.real(arr))
-            else:
-                vals = arr.real.ravel()
-                limit = min(nc, len(m_idx), len(vals))
-                for i in range(limit):
-                    if m_idx[i] >= 0:
-                        rhs[m_idx[i]] -= float(vals[i])
-
-        # ---- 4. UMEC 变压器历史源 (flat index arrays) ----
-        for x_idx, name in enumerate(plan.xfmr_names):
-            xfmr = self.transformers[name]
-            _, I_hist_tf = xfmr.get_norton_equivalent()
-            nf_arr = plan.xfmr_port_nf_idx[x_idx]
-            nt_arr = plan.xfmr_port_nt_idx[x_idx]
-            for i in range(len(nf_arr)):
-                if nf_arr[i] >= 0:
-                    rhs[nf_arr[i]] -= I_hist_tf[i]
-                if nt_arr[i] >= 0:
-                    rhs[nt_arr[i]] += I_hist_tf[i]
-
-        # ---- 5. 电压源激励 E ----
-        if self._vs_list:
-            if self.pre_sample_sources and self._voltage_source_samples:
-                step_idx = int(round(self.time / self.dt))
-                for k, vs in enumerate(self._vs_list):
-                    rhs[n + k] = float(
-                        self._voltage_source_samples[vs.name][step_idx]
-                    )
-            else:
-                for k, vs in enumerate(self._vs_list):
-                    rhs[n + k] = vs.voltage_at(self.time)
-
-        return rhs
-
+        """Build MNA RHS via precompiled RHSPlan — delegated to RHSEngine."""
+        return self.rhs_engine._build_fast_impl()
     def validate_probes(self) -> None:
         """Validate probe references without mutating circuit topology."""
         for name, probe in self.voltage_probes.items():
@@ -3058,7 +2798,7 @@ class EMTPSolver:
         self._active_mna_solver_name = _SPARSE_SOLVER_NAME
         self._vs_list = None
         self._vs_index_map = None
-        self._rhs_buf = None
+        # rhs_buf now owned by rhs_engine
 
     def _init_result_store(self, n_steps: int) -> None:
         """Create :class:`ResultStore` and alias legacy buffer attributes.

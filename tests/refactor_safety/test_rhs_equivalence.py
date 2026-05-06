@@ -20,8 +20,8 @@ class TestRHSPlanBasics:
         s.add_voltage_probe("V1", 1, 0)
         s.run()
 
-        assert s._rhs_plan is not None
-        assert not s._rhs_plan_dirty
+        assert s.rhs_engine.plan is not None
+        assert not s.rhs_engine.plan_dirty
 
     def test_plan_recompiles_after_topology_change(self):
         s = EMTPSolver(dt=1e-6, finish_time=10e-6, verbose=False,
@@ -31,11 +31,11 @@ class TestRHSPlanBasics:
         s.add_voltage_probe("V1", 1, 0)
         s.run()
 
-        assert not s._rhs_plan_dirty
+        assert not s.rhs_engine.plan_dirty
 
         # Adding a new branch must invalidate the plan
         s.add_R("r2", 1, 0, 50.0)
-        assert s._rhs_plan_dirty
+        assert s.rhs_engine.plan_dirty
 
 
 class TestRHSConsistency:
