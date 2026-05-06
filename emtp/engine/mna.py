@@ -1,8 +1,11 @@
 """MNA assembly and kernel — builds the augmented MNA system and manages the G-matrix lifecycle.
 
-MNAAssembler was extracted from ``EMTPSolver._build_MNA_matrix`` and
-``EMTPSolver._build_MNA_rhs``.  MNAKernel owns the G-matrix lifecycle,
-dirty detection, and sparse linear solve dispatch.
+MNAAssembler was extracted from EMTPSolver._build_MNA_matrix and
+_build_MNA_rhs.  MNAKernel owns the G-matrix lifecycle, dirty detection,
+and sparse linear solve dispatch.
+
+PR-4b: _assemble_matrix_impl contains the actual G-matrix assembly logic
+(formerly solver._build_MNA_matrix).  Solver methods are now thin wrappers.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ if TYPE_CHECKING:
 
 
 class MNAAssembler:
-    """Build the (n+m)×(n+m) MNA augmented system.
+    """Build the (n+m)x(n+m) MNA augmented system.
 
     Parameters
     ----------
@@ -119,16 +122,15 @@ class MNAKernel:
 
     Owns:
     - Matrix dirty detection and rebuild scheduling
-    - StampingEngine (COOStamper + G assembly)
-    - LU factorization cache (SuperLU via scipy.sparse.linalg.splu)
-    - Linear solve
+    - G-matrix assembly (via _assemble_matrix_impl)
+    - LU factorization and linear solve (via StampingEngine)
+    - Rebuild reason tracking for diagnostics
 
     Parameters
     ----------
     solver: EMTPSolver
-        The owning solver.  This reference is used as a facade until
-        explicit dependencies (stamping_engine, stats) are wired in a
-        later PR.
+        The owning solver.  Complex internal state (line nodes, vs_list,
+        _mna_size) is still accessed through this reference.
     """
 
     def __init__(self, solver):
@@ -140,16 +142,11 @@ class MNAKernel:
     # -----------------------------------------------------------------
 
     def ensure_matrix(self) -> "sp.csc_matrix":
-        """Return the current MNA matrix, rebuilding if needed.
-
-        Side-effects:
-        - Updates solver._stats['G_rebuilds'] / ['G_cache_hits']
-        - Updates solver._cached_MNA
-        """
+        """Return the current MNA matrix, rebuilding if needed."""
         s = self._solver
         eng = s._stamping
         if eng.G_dirty or eng.cached_MNA is None:
-            s._build_MNA_matrix()
+            self._assemble_matrix_impl()
             s._cached_MNA = eng.cached_MNA
             s._stats['G_rebuilds'] = s._stats.get('G_rebuilds', 0) + 1
             self._dirty_reasons.clear()
@@ -159,8 +156,99 @@ class MNAKernel:
         return s._cached_MNA
 
     def solve(self, MNA: "sp.csc_matrix", rhs: "np.ndarray") -> "np.ndarray":
-        """Solve MNA · x = rhs using the current LU factorization."""
-        return self._solver._solve_mna(MNA, rhs)
+        """Solve MNA x = rhs via StampingEngine (LU factorization)."""
+        s = self._solver
+        return s._stamping.solve(MNA, rhs, s._vs_list or [])
+
+    # -----------------------------------------------------------------
+    # G-matrix assembly (formerly solver._build_MNA_matrix)
+    # -----------------------------------------------------------------
+
+    def _assemble_matrix_impl(self) -> None:
+        """Build the augmented MNA sparse matrix (CSC format).
+
+        Delegates device stamping to StampingEngine; inserts transmission
+        line and transformer contributions between begin/finish.
+        Side-effect: updates solver._vs_list, _vs_index_map, _mna_size.
+        """
+        s = self._solver
+        n = s._indexer.n
+        if n == 0:
+            raise ValueError("Circuit has no nodes")
+
+        if s._vs_list is None:
+            s._vs_list = list(s.voltage_sources.values())
+            s._vs_index_map = {
+                vs.name: idx for idx, vs in enumerate(s._vs_list)
+            }
+
+        m = len(s._vs_list)
+        s._mna_size = n + m
+
+        eng = s._stamping
+        stamper = eng.begin_G(n, m)
+
+        # 1. branch devices
+        eng.stamp_devices_G(stamper, s._devices)
+
+        # 2. transmission lines
+        for line in s.transmission_lines.values():
+            nk_list, nm_list = s._get_line_nodes(line)
+            nc = len(nk_list)
+            G_line = line.G_eq
+
+            if not isinstance(G_line, np.ndarray):
+                G_line = np.eye(nc) * G_line
+            elif G_line.ndim == 1:
+                G_line = np.diag(G_line)
+            elif G_line.shape != (nc, nc):
+                if G_line.shape[0] >= nc and G_line.shape[1] >= nc:
+                    G_line = G_line[:nc, :nc]
+                else:
+                    G_line = np.eye(nc) * G_line[0, 0]
+
+            for i, node_row in enumerate(nk_list):
+                if node_row <= 0:
+                    continue
+                cr = s._indexer.to_compact(node_row)
+                for j, node_col in enumerate(nk_list):
+                    if node_col > 0:
+                        stamper.add(cr, s._indexer.to_compact(node_col), G_line[i, j])
+            for i, node_row in enumerate(nm_list):
+                if node_row <= 0:
+                    continue
+                cr = s._indexer.to_compact(node_row)
+                for j, node_col in enumerate(nm_list):
+                    if node_col > 0:
+                        stamper.add(cr, s._indexer.to_compact(node_col), G_line[i, j])
+
+        # 3. UMEC transformers
+        for xfmr in s.transformers.values():
+            G_tf, _ = xfmr.get_norton_equivalent()
+            port_nodes = xfmr.get_port_nodes()
+            mp = len(port_nodes)
+            for i in range(mp):
+                nf_i, nt_i = port_nodes[i]
+                cf_i = s._indexer.to_compact(nf_i)
+                ct_i = s._indexer.to_compact(nt_i)
+                for j in range(mp):
+                    nf_j, nt_j = port_nodes[j]
+                    cf_j = s._indexer.to_compact(nf_j)
+                    ct_j = s._indexer.to_compact(nt_j)
+                    g = G_tf[i, j]
+                    if cf_i >= 0 and cf_j >= 0:
+                        stamper.add(cf_i, cf_j, g)
+                    if ct_i >= 0 and ct_j >= 0:
+                        stamper.add(ct_i, ct_j, g)
+                    if cf_i >= 0 and ct_j >= 0:
+                        stamper.add(cf_i, ct_j, -g)
+                    if ct_i >= 0 and cf_j >= 0:
+                        stamper.add(ct_i, cf_j, -g)
+
+        # 4. voltage sources
+        eng.stamp_vs_G(stamper, s._vs_list)
+
+        eng.finish_G(stamper)
 
     # -----------------------------------------------------------------
     # Dirty detection
@@ -188,7 +276,7 @@ class MNAKernel:
         return list(self._dirty_reasons)
 
     # -----------------------------------------------------------------
-    # Statistics (delegated to solver._stats for now)
+    # Statistics
     # -----------------------------------------------------------------
 
     @property

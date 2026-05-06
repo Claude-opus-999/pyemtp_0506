@@ -1945,89 +1945,9 @@ class EMTPSolver:
     # =========================================================================
 
     def _build_MNA_matrix(self) -> sp.csc_matrix:
-        """构建 MNA 增广稀疏矩阵 (CSC 格式)。
-
-        委托 StampingEngine 处理 devices + VS；传输线与变压器贡献
-        由 solver 在 begin/finish 之间插入。
-        """
-        n = self._indexer.n
-        if n == 0:
-            raise ValueError("电路中没有节点")
-
-        if self._vs_list is None:
-            self._vs_list = list(self.voltage_sources.values())
-            self._vs_index_map = {
-                vs.name: idx for idx, vs in enumerate(self._vs_list)
-            }
-
-        m = len(self._vs_list)
-        self._mna_size = n + m
-
-        eng = self._stamping
-        stamper = eng.begin_G(n, m)
-
-        # 1. branch devices
-        eng.stamp_devices_G(stamper, self._devices)
-
-        # 2. transmission lines (solver-owned, not yet device-ified)
-        for line in self.transmission_lines.values():
-            nk_list, nm_list = self._get_line_nodes(line)
-            nc = len(nk_list)
-            G_line = line.G_eq
-
-            if not isinstance(G_line, np.ndarray):
-                G_line = np.eye(nc) * G_line
-            elif G_line.ndim == 1:
-                G_line = np.diag(G_line)
-            elif G_line.shape != (nc, nc):
-                if G_line.shape[0] >= nc and G_line.shape[1] >= nc:
-                    G_line = G_line[:nc, :nc]
-                else:
-                    G_line = np.eye(nc) * G_line[0, 0]
-
-            for i, node_row in enumerate(nk_list):
-                if node_row <= 0:
-                    continue
-                cr = self._indexer.to_compact(node_row)
-                for j, node_col in enumerate(nk_list):
-                    if node_col > 0:
-                        stamper.add(cr, self._indexer.to_compact(node_col), G_line[i, j])
-            for i, node_row in enumerate(nm_list):
-                if node_row <= 0:
-                    continue
-                cr = self._indexer.to_compact(node_row)
-                for j, node_col in enumerate(nm_list):
-                    if node_col > 0:
-                        stamper.add(cr, self._indexer.to_compact(node_col), G_line[i, j])
-
-        # 3. UMEC transformers
-        for xfmr in self.transformers.values():
-            G_tf, _ = xfmr.get_norton_equivalent()
-            port_nodes = xfmr.get_port_nodes()
-            mp = len(port_nodes)
-            for i in range(mp):
-                nf_i, nt_i = port_nodes[i]
-                cf_i = self._indexer.to_compact(nf_i)
-                ct_i = self._indexer.to_compact(nt_i)
-                for j in range(mp):
-                    nf_j, nt_j = port_nodes[j]
-                    cf_j = self._indexer.to_compact(nf_j)
-                    ct_j = self._indexer.to_compact(nt_j)
-                    g = G_tf[i, j]
-                    if cf_i >= 0 and cf_j >= 0:
-                        stamper.add(cf_i, cf_j, g)
-                    if ct_i >= 0 and ct_j >= 0:
-                        stamper.add(ct_i, ct_j, g)
-                    if cf_i >= 0 and ct_j >= 0:
-                        stamper.add(cf_i, ct_j, -g)
-                    if ct_i >= 0 and cf_j >= 0:
-                        stamper.add(ct_i, cf_j, -g)
-
-        # 4. voltage sources
-        eng.stamp_vs_G(stamper, self._vs_list)
-
-        return eng.finish_G(stamper)
-
+        """Build MNA augmented sparse matrix — delegated to MNAKernel."""
+        self.kernel._assemble_matrix_impl()
+        return self._stamping.cached_MNA
     def _build_MNA_rhs(self) -> np.ndarray:
         """Build MNA RHS vector — delegated to RHSEngine."""
         return self.rhs_engine._build_slow_impl()
@@ -2051,9 +1971,8 @@ class EMTPSolver:
     def _solve_mna(
         self, MNA: sp.csc_matrix, rhs: np.ndarray,
     ) -> np.ndarray:
-        """MNA sparse solve - delegates to StampingEngine."""
-        self._active_mna_solver_name = "SuperLU(splu)"
-        return self._stamping.solve(MNA, rhs, self._vs_list or [])
+        """MNA sparse solve — delegated to MNAKernel."""
+        return self.kernel.solve(MNA, rhs)
 
     # =========================================================================
     # 单步求解
