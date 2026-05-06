@@ -99,3 +99,39 @@ class TestOHLGenerationSmoke:
         assert Y.shape == (5, 2, 2)
         assert meta["n_original"] == 2
         validate_zy_matrices(f, Z, Y)
+
+
+class TestPipeTypePotentialToAdmittance:
+    def test_2d_P_matrix(self):
+        from pylcp.generation.pipe_type_cable import _potential_to_admittance
+
+        freq = np.array([50.0, 100.0])
+        P = np.eye(3)
+        Y = _potential_to_admittance(freq, P, 3)
+        assert Y.shape == (2, 3, 3)
+        assert np.all(np.isfinite(Y))
+
+    def test_3d_P_matrix(self):
+        from pylcp.generation.pipe_type_cable import _potential_to_admittance
+
+        freq = np.array([50.0, 100.0])
+        P = np.stack([np.eye(3), 2.0 * np.eye(3)])
+        Y = _potential_to_admittance(freq, P, 3)
+        assert Y.shape == (2, 3, 3)
+        assert np.all(np.isfinite(Y))
+
+    def test_2d_shape_mismatch_raises(self):
+        from pylcp.generation.pipe_type_cable import _potential_to_admittance
+
+        freq = np.array([50.0, 100.0])
+        P = np.eye(4)
+        with pytest.raises(ValueError, match="shape mismatch"):
+            _potential_to_admittance(freq, P, 3)
+
+    def test_3d_shape_mismatch_raises(self):
+        from pylcp.generation.pipe_type_cable import _potential_to_admittance
+
+        freq = np.array([50.0, 100.0])
+        P = np.stack([np.eye(4), np.eye(4)])
+        with pytest.raises(ValueError, match="shape mismatch"):
+            _potential_to_admittance(freq, P, 3)
