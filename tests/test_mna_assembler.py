@@ -3,10 +3,10 @@
 import numpy as np
 import pytest
 
-from emtp.nodes import NodeIndexer
-from emtp.stamping import StampingEngine
-from emtp.types import VoltageSource
-from emtp.devices import ResistorDevice, CapacitorDevice
+from emtp.circuit.nodes import NodeIndexer
+from emtp.engine.stamping import StampingEngine
+from emtp.circuit.elements import VoltageSource
+from emtp.models import ResistorDevice, CapacitorDevice
 
 
 class TestMNAAssembler:
@@ -22,7 +22,7 @@ class TestMNAAssembler:
     def assembler(self, indexer):
         eng = StampingEngine(indexer)
         return __import__(
-            "emtp.assembly", fromlist=["MNAAssembler"],
+            "emtp.engine.mna", fromlist=["MNAAssembler"],
         ).MNAAssembler(eng, indexer)
 
     def test_build_minimal_G(self, assembler, indexer):

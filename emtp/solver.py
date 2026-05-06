@@ -122,18 +122,18 @@ logger = logging.getLogger(__name__)
 # Re-export from emtp package modules (P3 modularisation)
 # These were originally defined inline; now sourced from the new package.
 # ---------------------------------------------------------------------------
-from emtp.nodes import NodeBook, NodeIndexer           # noqa: E402, F811
-from emtp.types import (                                # noqa: E402, F811
+from emtp.circuit.nodes import NodeBook, NodeIndexer           # noqa: E402, F811
+from emtp.circuit.elements import (                                # noqa: E402, F811
     VoltageSource, ValidationIssue, ValidationReport,
     RHSPlan, ElementType, Branch, CurrentSource, LineData,
 )
-from emtp.sparse_solver import (                        # noqa: E402
+from emtp.engine.linear import (                        # noqa: E402
     _SPARSE_SOLVER_NAME as _SPARSE_SOLVER_NAME,
     _sparse_factorize as _sparse_factorize,
     SparseLinearSolver,
 )
-from emtp.stamping import COOStamper, StampingEngine    # noqa: E402, F811
-from emtp.devices import (                               # noqa: E402, F811
+from emtp.engine.stamping import COOStamper, StampingEngine    # noqa: E402, F811
+from emtp.models import (                               # noqa: E402, F811
     Device,
     ResistorDevice,
     InductorDevice,
@@ -144,20 +144,20 @@ from emtp.devices import (                               # noqa: E402, F811
     LPMFlashoverDevice,
     _update_series_rl_history_static,
 )
-from emtp.runtime import DynamicDeviceRuntime           # noqa: E402, F811
-from emtp.runtime.resolve import ResolveManager
-from emtp.runtime.stepper import TimeStepper
-from emtp.results.store import ResultStore
-from emtp.lines.bergeron import BergeronLineDevice
-from emtp.lines.ulm import ULMLineDevice
-from emtp.lines.fitulm_resolver import FitULMSpec, FitULMResolver
-from emtp.transformers.umec import UMECTransformerDevice
-from emtp.registry import SimulationRegistry, ElementRecord, SourceRecord, MultiPortRecord
-from emtp.probes import ProbeManager
-from emtp.rhs import RHSEngine
-from emtp.kernel import MNAKernel
-from emtp.runtime.event_runtime import EventRuntime
-from emtp.results import (                                # noqa: E402
+from emtp.engine.state import DynamicDeviceRuntime           # noqa: E402, F811
+from emtp.engine.nonlinear import ResolveManager
+from emtp.engine.simulation import TimeStepper
+from emtp.io.results import ResultStore
+from emtp.models.lines import BergeronLineDevice
+from emtp.models.lines import ULMLineDevice
+from emtp.models.fitulm import FitULMSpec, FitULMResolver
+from emtp.models.transformers import UMECTransformerDevice
+from emtp.circuit import SimulationRegistry, ElementRecord, SourceRecord, MultiPortRecord
+from emtp.circuit.probes import ProbeManager
+from emtp.engine.rhs import RHSEngine
+from emtp.engine.mna import MNAKernel
+from emtp.engine.simulation import EventRuntime
+from emtp.io.results import (                                # noqa: E402
     scale_probe_values,
     scale_values,
     node_voltage_from_solution,
@@ -3461,7 +3461,7 @@ class EMTPSolver:
         Creates a directory with metadata.json, branches.json, lines.json,
         lpm.json and arrays.npz.  Restore with :meth:`load_snapshot`.
         """
-        from emtp.snapshot.serializer import save_snapshot as _save
+        from emtp.io.snapshot import save_snapshot as _save
         _save(self, path, config=config, notes=notes)
 
     def load_snapshot(self, path, *, strict: bool = True) -> None:
@@ -3470,7 +3470,7 @@ class EMTPSolver:
         The solver must already have the correct topology (branches, lines,
         transformers).  Only dynamic state is restored.
         """
-        from emtp.snapshot.restore import load_snapshot_into_solver
+        from emtp.io.snapshot import load_snapshot_into_solver
         load_snapshot_into_solver(self, path, strict=strict)
 
     def run_until(self, t_end: float, *, reset_state: bool = False) -> None:

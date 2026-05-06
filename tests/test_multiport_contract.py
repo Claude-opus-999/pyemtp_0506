@@ -8,7 +8,7 @@ history advance and rebuild-check all flow through the protocol.
 import numpy as np
 import pytest
 
-from emtp.devices import MultiPortDevice
+from emtp.models import MultiPortDevice
 
 
 # ---------------------------------------------------------------------------
@@ -109,8 +109,8 @@ class TestMultiPortStampAndSolve:
     """Verify a MultiPortDevice participates correctly in a mini solver."""
 
     def test_stamp_G_produces_correct_sparsity(self):
-        from emtp.nodes import NodeIndexer
-        from emtp.stamping import COOStamper
+        from emtp.circuit.nodes import NodeIndexer
+        from emtp.engine.stamping import COOStamper
 
         indexer = NodeIndexer()
         dev = FakeThreePortDevice()
@@ -128,7 +128,7 @@ class TestMultiPortStampAndSolve:
         assert G.nnz >= 4  # at minimum the diagonal blocks
 
     def test_stamp_rhs_applies_correct_signs(self):
-        from emtp.nodes import NodeIndexer
+        from emtp.circuit.nodes import NodeIndexer
 
         indexer = NodeIndexer()
         dev = FakeThreePortDevice(I_hist=0.05)
@@ -145,7 +145,7 @@ class TestMultiPortStampAndSolve:
         assert np.isclose(rhs[indexer.to_compact(2)], 0.00)
 
     def test_update_after_solve_reads_port_voltages(self):
-        from emtp.nodes import NodeIndexer
+        from emtp.circuit.nodes import NodeIndexer
 
         indexer = NodeIndexer()
         dev = FakeThreePortDevice()
@@ -161,7 +161,7 @@ class TestMultiPortStampAndSolve:
         assert np.isclose(dev._vk[2], 2.0)
 
     def test_update_history_called(self):
-        from emtp.nodes import NodeIndexer
+        from emtp.circuit.nodes import NodeIndexer
 
         indexer = NodeIndexer()
         dev = FakeThreePortDevice()

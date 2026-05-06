@@ -7,7 +7,7 @@ import pytest
 
 from pylcp import LCPLineType, LCPFitULMSpec
 from pylcp.cache import compute_cache_key, get_cache_path
-from emtp.lines.fitulm_resolver import FitULMSpec, FitULMResolver
+from emtp.models.fitulm import FitULMSpec, FitULMResolver
 
 
 def _make_minimal_spec(**kwargs):

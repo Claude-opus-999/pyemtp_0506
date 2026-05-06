@@ -2,7 +2,7 @@
 
 import pytest
 from emtp import EMTPSolver
-from emtp.builders.element_builder import add_element_to_solver
+from emtp.cases.element_builder import add_element_to_solver
 
 
 class TestElementBuilderULMLine:

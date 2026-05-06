@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from emtp.devices.multiport import MultiPortDevice
+from emtp.models.multiport import MultiPortDevice
 from emtp import EMTPSolver
 
 
@@ -72,7 +72,7 @@ class TestMultiportRegistry:
         assert ("register_nodes", ()) in dev.calls
 
         # stamp G
-        from emtp.stamping import COOStamper
+        from emtp.engine.stamping import COOStamper
         stamper = COOStamper(2)
         s._stamp_multiport_G(stamper)
         assert ("stamp_G", ()) in dev.calls

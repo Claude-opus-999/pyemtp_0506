@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from emtp.lines.fitulm_resolver import FitULMSpec, FitULMResolver
+from emtp.models.fitulm import FitULMSpec, FitULMResolver
 
 
 class TestFitULMResolverExternalFile:
@@ -182,7 +182,7 @@ class TestSolverAddULMLineLengthConsistency:
     def test_length_mismatch_raises(self, monkeypatch):
         """When generate_fitulm=True, solver length must match lcp_spec.length."""
         from emtp import EMTPSolver
-        from emtp.lines import fitulm_resolver as resolver_module
+        from emtp.models import fitulm as resolver_module
 
         class FakeLCPSpec:
             length = 5000.0
@@ -205,7 +205,7 @@ class TestSolverAddULMLineLengthConsistency:
     def test_length_consistent_passes(self, monkeypatch):
         """When lengths match, we get past the length check."""
         from emtp import EMTPSolver
-        from emtp.lines import fitulm_resolver as resolver_module
+        from emtp.models import fitulm as resolver_module
 
         class FakeLCPSpec:
             length = 5000.0
@@ -228,7 +228,7 @@ class TestSolverAddULMLineLengthConsistency:
     def test_omits_length_uses_lcp_spec_length(self, monkeypatch):
         """When generate_fitulm=True and length omitted, use lcp_spec.length."""
         from emtp import EMTPSolver
-        from emtp.lines import fitulm_resolver as resolver_module
+        from emtp.models import fitulm as resolver_module
 
         class FakeLCPSpec:
             length = 5000.0

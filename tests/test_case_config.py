@@ -6,16 +6,16 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from emtp.config.loader import load_case_config
-from emtp.config.schema import CaseConfig, SimulationOptions
-from emtp.config.validator import validate_case_config
-from emtp.config.defaults import SUPPORTED_ELEMENTS, SUPPORTED_SOURCES
-from emtp.builders.solver_builder import build_solver_from_config
-from emtp.builders.element_builder import add_element_to_solver
-from emtp.builders.source_builder import add_source_to_solver
-from emtp.builders.probe_builder import add_probe_to_solver
-from emtp.case_runner import run_case
-from emtp.result_bundle import ResultBundle
+from emtp.cases.loader import load_case_config
+from emtp.cases.schema import CaseConfig, SimulationOptions
+from emtp.cases.validator import validate_case_config
+from emtp.cases.defaults import SUPPORTED_ELEMENTS, SUPPORTED_SOURCES
+from emtp.cases.builder import build_solver_from_config
+from emtp.cases.element_builder import add_element_to_solver
+from emtp.cases.source_builder import add_source_to_solver
+from emtp.cases.probe_builder import add_probe_to_solver
+from emtp.cases.runner import run_case
+from emtp.io.result_bundle import ResultBundle
 
 
 CASES_DIR = Path(__file__).resolve().parent.parent / "cases" / "templates"
@@ -143,7 +143,7 @@ class TestSolverBuilder:
     def test_elements_have_correct_types(self):
         config = load_case_config(CASES_DIR / "rc_step.json")
         solver = build_solver_from_config(config)
-        from emtp.types import ElementType
+        from emtp.circuit.elements import ElementType
         assert solver.branches["R1"].element_type == ElementType.RESISTOR
         assert solver.branches["C1"].element_type == ElementType.CAPACITOR
 

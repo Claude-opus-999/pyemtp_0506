@@ -4,7 +4,7 @@ cleanly even when the external modules are unavailable."""
 import numpy as np
 import pytest
 
-from emtp.devices.multiport import MultiPortDevice
+from emtp.models.multiport import MultiPortDevice
 
 
 # ---------------------------------------------------------------------------
@@ -13,7 +13,7 @@ from emtp.devices.multiport import MultiPortDevice
 
 class TestULMLineDeviceImport:
     def test_adapter_imports(self):
-        from emtp.lines.ulm import ULMLineDevice
+        from emtp.models.lines import ULMLineDevice
         assert ULMLineDevice is not None
 
 
@@ -39,19 +39,19 @@ class TestULMLineDeviceSmoke:
         return MockULM()
 
     def test_adapter_satisfies_protocol(self, mock_line):
-        from emtp.lines.ulm import ULMLineDevice
+        from emtp.models.lines import ULMLineDevice
         dev = ULMLineDevice("mock", mock_line, [1, 2], [3, 4])
         assert isinstance(dev, MultiPortDevice)
 
     def test_ports_from_nodes(self, mock_line):
-        from emtp.lines.ulm import ULMLineDevice
+        from emtp.models.lines import ULMLineDevice
         dev = ULMLineDevice("mock", mock_line, [1, 2], [3, 4])
         assert dev.ports == ((1, 0), (2, 0), (3, 0), (4, 0))
 
     def test_stamp_G_correct_shape(self, mock_line):
-        from emtp.lines.ulm import ULMLineDevice
-        from emtp.nodes import NodeIndexer
-        from emtp.stamping import COOStamper
+        from emtp.models.lines import ULMLineDevice
+        from emtp.circuit.nodes import NodeIndexer
+        from emtp.engine.stamping import COOStamper
 
         dev = ULMLineDevice("mock", mock_line, [1, 2], [3, 4])
         indexer = NodeIndexer()
@@ -65,8 +65,8 @@ class TestULMLineDeviceSmoke:
         assert G.nnz > 0
 
     def test_stamp_rhs_sign_convention(self, mock_line):
-        from emtp.lines.ulm import ULMLineDevice
-        from emtp.nodes import NodeIndexer
+        from emtp.models.lines import ULMLineDevice
+        from emtp.circuit.nodes import NodeIndexer
 
         dev = ULMLineDevice("mock", mock_line, [1, 2], [3, 4])
         indexer = NodeIndexer()
@@ -80,7 +80,7 @@ class TestULMLineDeviceSmoke:
         assert np.allclose(rhs[2:4], [0.3, 0.3])
 
     def test_reset_state(self, mock_line):
-        from emtp.lines.ulm import ULMLineDevice
+        from emtp.models.lines import ULMLineDevice
         dev = ULMLineDevice("mock", mock_line, [1, 2], [3, 4])
         dev._vk = np.array([10.0, 20.0])
         dev.reset_state()
@@ -93,7 +93,7 @@ class TestULMLineDeviceSmoke:
 
 class TestUMECTransformerDeviceImport:
     def test_adapter_imports(self):
-        from emtp.transformers.umec import UMECTransformerDevice
+        from emtp.models.transformers import UMECTransformerDevice
         assert UMECTransformerDevice is not None
 
 
@@ -131,20 +131,20 @@ class TestUMECTransformerDeviceSmoke:
         return MockUMEC()
 
     def test_adapter_satisfies_protocol(self, mock_xfmr):
-        from emtp.transformers.umec import UMECTransformerDevice
+        from emtp.models.transformers import UMECTransformerDevice
         dev = UMECTransformerDevice("mock", mock_xfmr)
         assert isinstance(dev, MultiPortDevice)
 
     def test_ports_match_transformer(self, mock_xfmr):
-        from emtp.transformers.umec import UMECTransformerDevice
+        from emtp.models.transformers import UMECTransformerDevice
         dev = UMECTransformerDevice("mock", mock_xfmr)
         assert len(dev.ports) == 6
         assert dev.ports[0] == (1, 0)
 
     def test_stamp_G_is_square(self, mock_xfmr):
-        from emtp.transformers.umec import UMECTransformerDevice
-        from emtp.nodes import NodeIndexer
-        from emtp.stamping import COOStamper
+        from emtp.models.transformers import UMECTransformerDevice
+        from emtp.circuit.nodes import NodeIndexer
+        from emtp.engine.stamping import COOStamper
 
         dev = UMECTransformerDevice("mock", mock_xfmr)
         indexer = NodeIndexer()
@@ -157,8 +157,8 @@ class TestUMECTransformerDeviceSmoke:
         assert G.shape == (6, 6)
 
     def test_check_rebuild_no_saturation(self, mock_xfmr):
-        from emtp.transformers.umec import UMECTransformerDevice
-        from emtp.nodes import NodeIndexer
+        from emtp.models.transformers import UMECTransformerDevice
+        from emtp.circuit.nodes import NodeIndexer
 
         dev = UMECTransformerDevice("mock", mock_xfmr)
         indexer = NodeIndexer()
@@ -169,7 +169,7 @@ class TestUMECTransformerDeviceSmoke:
         assert dev.check_rebuild_required(V, indexer, 0.0) is False
 
     def test_reset_state(self, mock_xfmr):
-        from emtp.transformers.umec import UMECTransformerDevice
+        from emtp.models.transformers import UMECTransformerDevice
         dev = UMECTransformerDevice("mock", mock_xfmr)
         dev.reset_state()
         assert mock_xfmr._reset

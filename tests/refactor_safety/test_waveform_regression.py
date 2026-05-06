@@ -124,8 +124,8 @@ class TestRCSwitchRegression:
 class TestBergeronRegression:
     def test_bergeron_matched_loads_and_runs(self):
         """Bergeron matched case produces finite probes."""
-        from emtp.config.loader import load_case_config
-        from emtp.builders.solver_builder import build_solver_from_config
+        from emtp.cases.loader import load_case_config
+        from emtp.cases.builder import build_solver_from_config
 
         CASE = PROJECT_ROOT / "cases" / "templates" / "bergeron_matched.json"
         if not CASE.exists():

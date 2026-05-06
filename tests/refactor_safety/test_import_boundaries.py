@@ -1,9 +1,8 @@
-"""PR0: Import boundary tests — enforce layered dependency architecture.
+"""Import boundary tests — enforce layered dependency architecture.
 
 These tests prevent future code from introducing forbidden imports.
-Some are currently expected to fail (xfail) because the current codebase
-has not yet been fully refactored (PR2-PR7).  By PR7 all xfail markers
-should be removed.
+Layers: models/ → engine/ → circuit/ → cases/ → solver.py.
+The solver.py still directly imports Layer 0 physics modules (xfail).
 """
 
 import ast
@@ -54,8 +53,7 @@ def _imports_in_file(filepath: Path):
 # Rule: Layer 2 modules must not depend on case_runner (Layer 3)
 # =========================================================================
 
-LAYER2_DIRS = ["devices", "assembly", "runtime", "results",
-               "lines", "transformers", "sources", "nonlinear"]
+LAYER2_DIRS = ["models", "engine", "circuit", "io"]
 
 
 class TestLayer2DoesNotImportCaseRunner:
@@ -106,33 +104,24 @@ class TestSolverDoesNotImportLayer0:
 # =========================================================================
 
 class TestNoReverseDependencies:
-    def test_devices_do_not_import_solver(self):
-        """devices/ must not import solver or case_runner."""
+    def test_models_do_not_import_solver(self):
+        """models/ must not import solver or cases."""
         violations = []
-        for pyfile in _py_files_under(EMTP_DIR / "devices"):
+        for pyfile in _py_files_under(EMTP_DIR / "models"):
             import_names, from_names = _imports_in_file(pyfile)
-            if "solver" in from_names and "emtp.solver" in str(from_names):
+            if "solver" in str(from_names):
                 violations.append(str(pyfile.relative_to(PROJECT_ROOT)))
-            if "case_runner" in from_names:
+            if "case_runner" in str(from_names):
                 violations.append(str(pyfile.relative_to(PROJECT_ROOT)))
         assert not violations, (
-            "devices/ must not import solver or case_runner: " + str(violations)
+            "models/ must not import solver or case_runner: " + str(violations)
         )
 
-    def test_assembly_does_not_import_case_runner(self):
-        """assembly/ must not import case_runner."""
+    def test_engine_does_not_import_cases(self):
+        """engine/ must not import cases."""
         violations = []
-        for pyfile in _py_files_under(EMTP_DIR / "assembly"):
+        for pyfile in _py_files_under(EMTP_DIR / "engine"):
             _, from_names = _imports_in_file(pyfile)
-            if any("case_runner" in n for n in from_names):
-                violations.append(str(pyfile.relative_to(PROJECT_ROOT)))
-        assert not violations
-
-    def test_runtime_does_not_import_case_runner(self):
-        """runtime/ must not import case_runner."""
-        violations = []
-        for pyfile in _py_files_under(EMTP_DIR / "runtime"):
-            _, from_names = _imports_in_file(pyfile)
-            if any("case_runner" in n for n in from_names):
+            if any("cases" in n for n in from_names):
                 violations.append(str(pyfile.relative_to(PROJECT_ROOT)))
         assert not violations
