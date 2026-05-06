@@ -46,81 +46,44 @@ def _sparse_factorize(A: 'sp.csc_matrix') -> Any:
     """
     return splu(A, permc_spec='MMD_AT_PLUS_A')
 
-try:
-    from atp_lightning_current_generator_simplified import (
-        BaseLightningCurrentSource,
-        TWOEXPFCurrentSource,
-        HEIDLERFCurrentSource,
-        LightningWaveform,
-        create_lightning_current_source,
-        create_standard_twoexpf_current_source,
-    )
-except ImportError:
-    BaseLightningCurrentSource = ()
-    TWOEXPFCurrentSource = None
-    HEIDLERFCurrentSource = None
-    LightningWaveform = None
-    create_lightning_current_source = None
-    create_standard_twoexpf_current_source = None
+# Layer 0 imports — all routed through emtp.models adapters
+from emtp.models.sources import (
+    BaseLightningCurrentSource, TWOEXPFCurrentSource, HEIDLERFCurrentSource,
+    LightningWaveform, create_lightning_current_source,
+    create_standard_twoexpf_current_source,
+)
+from emtp.models.nonlinear import (
+    InsulatorFlashoverLPM, LPMConfig, LPMInsulatorType,
+    SegmentedSolverHelper, SegmentedMOAResistor,
+)
+from emtp.models.lines import (
+    BergeronLine, TransmissionLineInterface,
+)
+# availability flags derived from model adapter imports
+NONLINEAR_AVAILABLE = SegmentedMOAResistor is not None
+TRANSMISSION_LINE_AVAILABLE = BergeronLine is not None
 
-try:
-    from nonlinear_models_pscad import (
-        InsulatorFlashoverLPM,
-        LPMConfig,
-        LPMInsulatorType,
-        SegmentedSolverHelper,
-        SegmentedMOAResistor,
-    )
-    NONLINEAR_AVAILABLE = True
-except ImportError:
-    NONLINEAR_AVAILABLE = False
+# Compatibility stubs when Layer 0 libraries are unavailable
+if SegmentedSolverHelper is None:
+    class SegmentedSolverHelper:  # type: ignore[no-redef]
+        def __init__(self, *args, **kwargs): pass
+        def register(self, *args, **kwargs): pass
+        def reset_all(self): pass
+        def check_all_segments(self, voltages): return False, {}
 
-    class _UnavailableNonlinear:
+if BergeronLine is None:
+    class BergeronLine:  # type: ignore[no-redef]
         def __init__(self, *args, **kwargs):
-            raise ImportError(
-                "nonlinear_models_pscad.py is required for MOA/LPM nonlinear components"
-            )
-
-    class SegmentedSolverHelper:
-        def register(self, *args, **kwargs):
-            raise ImportError(
-                "nonlinear_models_pscad.py is required for segmented nonlinear components"
-            )
-        def reset_all(self):
-            return None
-        def check_all_segments(self, voltages):
-            return False, {}
-
-    InsulatorFlashoverLPM = _UnavailableNonlinear
-    LPMConfig = _UnavailableNonlinear
-    LPMInsulatorType = _UnavailableNonlinear
-    SegmentedMOAResistor = _UnavailableNonlinear
-
-try:
-    from transmission_line_emtp_v2 import (
-        BergeronLine,
-        TransmissionLineInterface,
-    )
-    TRANSMISSION_LINE_AVAILABLE = True
-except ImportError:
-    TRANSMISSION_LINE_AVAILABLE = False
-
-    class TransmissionLineInterface:
-        """Placeholder used when transmission_line_emtp_v2.py is not installed."""
+            raise ImportError("transmission_line_emtp_v2.py is required")
+if TransmissionLineInterface is None:
+    class TransmissionLineInterface:  # type: ignore[no-redef]
         pass
-
-    class BergeronLine(TransmissionLineInterface):
-        def __init__(self, *args, **kwargs):
-            raise ImportError(
-                "transmission_line_emtp_v2.py is required for BergeronLine components"
-            )
 
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Re-export from emtp package modules (P3 modularisation)
-# These were originally defined inline; now sourced from the new package.
+# Internal imports from emtp subpackages
 # ---------------------------------------------------------------------------
 from emtp.circuit.nodes import NodeBook, NodeIndexer           # noqa: E402, F811
 from emtp.circuit.elements import (                                # noqa: E402, F811
@@ -166,41 +129,16 @@ from emtp.io.results import (                                # noqa: E402
     branch_current_from_solution,
 )
 
-# ---------------------------------------------------------------------------
-# 可选模块:ULM / UMEC
-# ---------------------------------------------------------------------------
-
-try:
-    from ulm_transmission_line_PARA import (
-        FitULMData,
-        FitULMReader,
-        ULMLine,
-        ULMModel,
-        ULMBatchPack,
-    )
-    ULM_AVAILABLE = True
-except ImportError:
-    ULM_AVAILABLE = False
-    ULMLine = None
-    ULMModel = None
-    FitULMReader = None
-    FitULMData = None
-    ULMBatchPack = None
-
-try:
-    from umec_transformer import (
-        UMECTransformer,
-        UMECTransformerData,
-        WindingType,
-        create_umec_transformer_3ph_bank,
-    )
-    UMEC_AVAILABLE = True
-except ImportError:
-    UMEC_AVAILABLE = False
-    UMECTransformer = None
-    UMECTransformerData = None
-    WindingType = None
-    create_umec_transformer_3ph_bank = None
+# ULM / UMEC — routed through emtp.models adapters
+from emtp.models.lines import (
+    FitULMData, FitULMReader, ULMLine, ULMModel, ULMBatchPack,
+)
+from emtp.models.transformers import (
+    UMECTransformer, UMECTransformerData, WindingType,
+    create_umec_transformer_3ph_bank,
+)
+ULM_AVAILABLE = ULMLine is not None
+UMEC_AVAILABLE = UMECTransformer is not None
 
 
 

@@ -80,10 +80,6 @@ class TestLayer2DoesNotImportCaseRunner:
 # =========================================================================
 
 class TestSolverDoesNotImportLayer0:
-    @pytest.mark.xfail(
-        reason="solver.py still imports Layer 0 directly.  "
-               "Expected to pass by PR7."
-    )
     def test_solver_no_layer0_import(self):
         """solver.py must not directly import top-level physics modules."""
         solver_py = EMTP_DIR / "solver.py"
