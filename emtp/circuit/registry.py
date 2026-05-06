@@ -1,11 +1,12 @@
 """SimulationRegistry — single entry point for all simulation object state.
 
-PR2: Shadow mode — mirrors solver containers, does not yet drive MNA.
+Now driving MNA invalidation: topology_version and numeric_version
+are the authoritative dirty signals for MNAKernel and RHSEngine.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterator
 
 from .registry_records import ElementRecord, SourceRecord, MultiPortRecord
 
@@ -19,8 +20,8 @@ class SimulationRegistry:
     - *multiport*: a multi-terminal device (Bergeron, ULM, UMEC)
 
     Version counters increment monotonically when state changes so
-    downstream modules (PR5 MNAKernel, PR4 RHSEngine) can detect
-    when cached plans or factorizations are stale.
+    downstream modules (MNAKernel, RHSEngine) can detect when cached
+    plans or factorizations are stale.
     """
 
     def __init__(self, node_book, node_indexer):
@@ -79,7 +80,31 @@ class SimulationRegistry:
         return list(self._multiports)
 
     # -----------------------------------------------------------------
-    # Registration (shadow mode — mirrors solver add_* methods)
+    # Iterator / accessor API — for engine modules to enumerate circuit
+    # -----------------------------------------------------------------
+
+    def iter_element_records(self) -> Iterator[ElementRecord]:
+        return iter(self._elements.values())
+
+    def iter_source_records(self) -> Iterator[SourceRecord]:
+        return iter(self._sources.values())
+
+    def iter_multiport_records(self) -> Iterator[MultiPortRecord]:
+        return iter(self._multiports.values())
+
+    def iter_devices(self) -> Iterator[object]:
+        return iter(self._devices.values())
+
+    def get_device(self, name: str) -> object:
+        """Return a registered device by name (raises KeyError if missing)."""
+        return self._devices[name]
+
+    def has_name(self, name: str) -> bool:
+        """True if *name* is registered in any category."""
+        return name in self._elements or name in self._sources or name in self._multiports
+
+    # -----------------------------------------------------------------
+    # Registration — sole entry point for add_* methods
     # -----------------------------------------------------------------
 
     def register_element(self, record: ElementRecord) -> None:
@@ -132,5 +157,5 @@ class SimulationRegistry:
     # -----------------------------------------------------------------
 
     def _ensure_unique(self, name: str) -> None:
-        if name in self._elements or name in self._sources or name in self._multiports:
+        if self.has_name(name):
             raise ValueError(f"Duplicate device name: {name!r}")
