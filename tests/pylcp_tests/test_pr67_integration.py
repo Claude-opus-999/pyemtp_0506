@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from emtp.lines.fitulm_resolver import FitULMSpec, FitULMResolver
+from emtp.models.fitulm import FitULMSpec, FitULMResolver
 from pylcp import LCPLineType, LCPFitULMSpec
 from pylcp.cache import compute_cache_key, get_cache_path
 

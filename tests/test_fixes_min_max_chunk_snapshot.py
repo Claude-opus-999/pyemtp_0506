@@ -6,10 +6,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from emtp.result_db import ResultDatabase
-from emtp.export.waveform_exporter import export_waveforms_npz, read_waveform_chunk
-from emtp.config.loader import load_case_config
-from emtp.builders.solver_builder import build_solver_from_config
+from emtp.io.database import ResultDatabase
+from emtp.io.export import export_waveforms_npz, read_waveform_chunk
+from emtp.cases.loader import load_case_config
+from emtp.cases.builder import build_solver_from_config
 
 
 CASES_DIR = Path(__file__).parent.parent / "cases" / "templates"
@@ -48,7 +48,7 @@ class TestResultDBSignalMinMax:
 
     def test_integration_roundtrip_via_run_case(self, tmp_path):
         """After run_case with export, DB signals should have non-null min/max."""
-        from emtp.case_runner import run_case
+        from emtp.cases.runner import run_case
 
         db_path = tmp_path / "test.sqlite"
         out = tmp_path / "run1"

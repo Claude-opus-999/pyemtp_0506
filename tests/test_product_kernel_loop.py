@@ -6,16 +6,16 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from emtp.case_runner import run_case
-from emtp.config.loader import load_case_config
-from emtp.builders.solver_builder import build_solver_from_config
-from emtp.export.waveform_exporter import (
+from emtp.cases.runner import run_case
+from emtp.cases.loader import load_case_config
+from emtp.cases.builder import build_solver_from_config
+from emtp.io.export import (
     export_waveforms_npz, collect_waveform_metadata, read_waveform_chunk,
 )
-from emtp.export.csv_exporter import export_waveforms_csv
-from emtp.export.metrics_exporter import export_metrics_json
-from emtp.result_db import ResultDatabase
-from emtp.run_id import make_run_id
+from emtp.io.export import export_waveforms_csv
+from emtp.io.export import export_metrics_json
+from emtp.io.database import ResultDatabase
+from emtp.io.run_id import make_run_id
 
 
 CASES_DIR = Path(__file__).parent.parent / "cases" / "templates"

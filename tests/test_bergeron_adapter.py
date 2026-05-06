@@ -4,9 +4,9 @@ the same G / RHS stamping as the existing manual line stamp in the solver."""
 import numpy as np
 import pytest
 
-from emtp.devices.multiport import MultiPortDevice
-from emtp.nodes import NodeIndexer
-from emtp.stamping import COOStamper
+from emtp.models.multiport import MultiPortDevice
+from emtp.circuit.nodes import NodeIndexer
+from emtp.engine.stamping import COOStamper
 
 try:
     from transmission_line_emtp_v2 import BergeronLine
@@ -15,7 +15,7 @@ except ImportError:
     BERGERON_AVAILABLE = False
 
 try:
-    from emtp.lines.bergeron import BergeronLineDevice
+    from emtp.models.lines import BergeronLineDevice
 except ImportError:
     BergeronLineDevice = None
 
@@ -157,8 +157,8 @@ class TestBergeronMultiportIntegration:
 
     def test_adapter_vs_legacy_matrix_equivalence(self):
         """The BergeronLineDevice adapter stamps the same G as the legacy path."""
-        from emtp.nodes import NodeIndexer
-        from emtp.stamping import COOStamper
+        from emtp.circuit.nodes import NodeIndexer
+        from emtp.engine.stamping import COOStamper
 
         line = BergeronLine("bl", 1, 2, Zc=300.0, tau=10e-6)
         line.initialize(1e-6)
@@ -187,7 +187,7 @@ class TestBergeronMultiportIntegration:
 
     def test_adapter_vs_legacy_rhs_equivalence(self):
         """The BergeronLineDevice adapter stamps the same RHS as the legacy path."""
-        from emtp.nodes import NodeIndexer
+        from emtp.circuit.nodes import NodeIndexer
 
         line = BergeronLine("bl", 1, 2, Zc=300.0, tau=10e-6)
         line.initialize(1e-6)

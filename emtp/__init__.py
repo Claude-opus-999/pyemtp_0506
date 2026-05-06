@@ -1,6 +1,6 @@
 """EMTP electromagnetic transient simulation solver package."""
 
-from .nodes import NodeBook, NodeIndexer
+from .circuit.nodes import NodeBook, NodeIndexer
 
 __all__ = [
     "NodeBook",

@@ -2,8 +2,8 @@
 
 import pytest
 
-from emtp.circuit import CircuitModel
-from emtp.nodes import NodeIndexer
+from emtp.circuit.model import CircuitModel
+from emtp.circuit.nodes import NodeIndexer
 
 
 class TestCircuitModel:

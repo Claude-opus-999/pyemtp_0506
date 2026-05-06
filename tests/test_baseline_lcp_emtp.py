@@ -148,7 +148,7 @@ class TestAllNewFilesCompile:
         files = [
             *sorted(Path("pylcp").glob("*.py")),
             *sorted(Path("pylcp/generation").glob("*.py")),
-            Path("emtp/lines/fitulm_resolver.py"),
+            Path("emtp/models/fitulm.py"),
         ]
 
         for file in files:

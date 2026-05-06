@@ -4,9 +4,9 @@ import numpy as np
 import pytest
 
 from emtp import EMTPSolver
-from emtp.config.loader import load_case_config
-from emtp.builders.solver_builder import build_solver_from_config
-from emtp.snapshot.hashing import compute_topology_hash, stable_json_hash
+from emtp.cases.loader import load_case_config
+from emtp.cases.builder import build_solver_from_config
+from emtp.io.snapshot import compute_topology_hash, stable_json_hash
 
 
 CASES_DIR = __import__("pathlib").Path(__file__).parent.parent / "cases" / "templates"

@@ -1,9 +1,11 @@
 """Verify canonical import paths and single-implementation guarantees.
 
-After the PR-1–PR-9 migration:
-- ``emtp/runtime/`` is a package, not a single-file module.
-- ``emtp/results/`` is a package, not a single-file module.
-- ``DynamicDeviceRuntime`` exists in exactly one place.
+After the v0.5.0 reorg:
+- ``emtp/circuit/`` owns nodes, elements, model, registry, probes.
+- ``emtp/engine/`` owns stamping, MNA, RHS, nonlinear, linear, simulation.
+- ``emtp/models/`` owns all physical element implementations.
+- ``emtp/cases/`` owns JSON config loading, validation, solver building.
+- ``emtp/io/`` owns results, export, snapshot, database.
 - ``EMTPSolver`` is served from ``emtp/solver.py``.
 """
 
@@ -12,30 +14,36 @@ import os
 import pytest
 
 
-class TestRuntimePackage:
+class TestCircuitPackage:
     def test_imports_as_package(self):
-        import emtp.runtime
-        path = emtp.runtime.__file__.replace("\\", "/")
-        assert path.endswith("emtp/runtime/__init__.py"), f"got {path}"
+        import emtp.circuit
+        path = emtp.circuit.__file__.replace("\\", "/")
+        assert path.endswith("emtp/circuit/__init__.py"), f"got {path}"
+
+    def test_node_indexer_from_package(self):
+        from emtp.circuit.nodes import NodeIndexer
+        assert NodeIndexer.__module__ == "emtp.circuit.nodes"
+
+
+class TestEnginePackage:
+    def test_imports_as_package(self):
+        import emtp.engine
+        path = emtp.engine.__file__.replace("\\", "/")
+        assert path.endswith("emtp/engine/__init__.py"), f"got {path}"
 
     def test_dynamic_runtime_from_package(self):
-        from emtp.runtime import DynamicDeviceRuntime
-        assert DynamicDeviceRuntime.__module__ == "emtp.runtime"
+        from emtp.engine.state import DynamicDeviceRuntime
+        assert DynamicDeviceRuntime.__module__ == "emtp.engine.state"
 
     def test_resolve_manager_from_package(self):
-        from emtp.runtime.resolve import ResolveManager
-        assert ResolveManager.__module__ == "emtp.runtime.resolve"
+        from emtp.engine.nonlinear import ResolveManager
+        assert ResolveManager.__module__ == "emtp.engine.nonlinear"
 
 
-class TestResultsPackage:
-    def test_imports_as_package(self):
-        import emtp.results
-        path = emtp.results.__file__.replace("\\", "/")
-        assert path.endswith("emtp/results/__init__.py"), f"got {path}"
-
+class TestResultsModule:
     def test_result_store_from_package(self):
-        from emtp.results.store import ResultStore
-        assert ResultStore.__module__ == "emtp.results.store"
+        from emtp.io.results import ResultStore
+        assert ResultStore.__module__ == "emtp.io.results"
 
 
 class TestSingleImplementations:
@@ -57,10 +65,10 @@ class TestSingleImplementations:
                         break
 
         canonical = [f for f in matches
-                     if f.replace("\\", "/").endswith("emtp/runtime/__init__.py")]
+                     if f.replace("\\", "/").endswith("emtp/engine/state.py")]
         assert len(canonical) == 1, f"canonical not found in {matches}"
         others = [f for f in matches
-                  if not f.replace("\\", "/").endswith("emtp/runtime/__init__.py")]
+                  if not f.replace("\\", "/").endswith("emtp/engine/state.py")]
         assert len(others) == 0, f"stale definitions in {others}"
 
     def test_emtp_solver_from_canonical_source(self):
@@ -68,11 +76,13 @@ class TestSingleImplementations:
         from emtp.solver import EMTPSolver as B
         assert A is B
 
-    def test_no_runtime_py_file(self):
-        """emtp/runtime.py must not exist next to emtp/runtime/ package."""
+    def test_no_stale_top_level_py_files(self):
+        """Old top-level module files must not exist next to new packages."""
         import emtp
         pkg_dir = os.path.dirname(emtp.__file__)
-        runtime_py = os.path.join(pkg_dir, "runtime.py")
-        results_py = os.path.join(pkg_dir, "results.py")
-        assert not os.path.isfile(runtime_py), f"{runtime_py} still exists"
-        assert not os.path.isfile(results_py), f"{results_py} still exists"
+        stale = ["runtime.py", "results.py", "types.py", "nodes.py", "circuit.py",
+                 "stamping.py", "sparse_solver.py", "validation.py",
+                 "result_bundle.py", "result_db.py", "run_id.py", "case_runner.py"]
+        for name in stale:
+            path = os.path.join(pkg_dir, name)
+            assert not os.path.isfile(path), f"{path} still exists"

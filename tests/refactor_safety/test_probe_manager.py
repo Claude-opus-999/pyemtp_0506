@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-from emtp.probes import ProbeManager, ProbeSpec
+from emtp.circuit.probes import ProbeManager, ProbeSpec
 
 
 class TestProbeManagerRegistration:

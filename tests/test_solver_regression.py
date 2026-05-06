@@ -7,8 +7,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from emtp import EMTPSolver, NodeIndexer
-from emtp.sparse_solver import SparseLinearSolver
-from emtp.types import ValidationReport, ValidationIssue
+from emtp.engine.linear import SparseLinearSolver
+from emtp.circuit.elements import ValidationReport, ValidationIssue
 
 
 class SolverRegressionTests(unittest.TestCase):

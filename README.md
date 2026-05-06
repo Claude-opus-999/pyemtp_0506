@@ -2,7 +2,7 @@
 
 基于 Python 的电磁暂态（EMTP）仿真求解器。使用修正节点分析法（MNA）进行电路求解，集成多相传输线、非线性元件、UMEC 变压器和绝缘子闪络模型。
 
-**当前版本**: `v0.4.0` · **测试**: 445 passed, 3 skipped · **Python**: 3.12+ · **依赖**: numpy, scipy
+**当前版本**: `v0.5.0` · **测试**: 445 passed, 3 skipped · **Python**: 3.12+ · **依赖**: numpy, scipy
 
 ---
 
@@ -27,7 +27,7 @@ print(f"V1 = {v[-1]:.2f}V")
 ### 方式二：JSON 配置驱动
 
 ```python
-from emtp.case_runner import run_case
+from emtp.cases import run_case
 
 result = run_case("cases/templates/rc_step.json")
 print(result.metrics)
@@ -59,9 +59,7 @@ print(result.metrics)
 ## Snapshot / Resume（分段运行）
 
 ```python
-from emtp.case_runner import run_case
-from emtp.config import load_case_config
-from emtp.builders import build_solver_from_config
+from emtp.cases import run_case, load_case_config, build_solver_from_config
 
 config = load_case_config("cases/templates/rc_step.json")
 
@@ -81,8 +79,7 @@ solver2.run_until(100e-6, reset_state=False)
 ## 结果导出
 
 ```python
-from emtp.export import export_waveforms_npz, export_metrics_json
-from emtp.export.waveform_exporter import read_waveform_chunk
+from emtp.io import export_waveforms_npz, export_metrics_json, read_waveform_chunk
 
 # 导出波形 (stride=10 降采样)
 export_waveforms_npz(result.waveforms, "runs/job_001", stride=10)
@@ -98,7 +95,7 @@ chunk = read_waveform_chunk("runs/job_001", "V_cap", start=100, count=50)
 ### SQLite 运行历史
 
 ```python
-from emtp.result_db import ResultDatabase
+from emtp.io import ResultDatabase
 
 db = ResultDatabase("runs/history.sqlite")
 db.insert_run("job_001", "rc_step", "done", "runs/job_001")
@@ -134,40 +131,80 @@ db.list_recent_runs(10)
 
 ```
 emtp/
-├── solver.py               EMTPSolver Facade (~3670 行)
-├── circuit.py              CircuitModel 数据容器
+├── solver.py               EMTPSolver 用户门面
 │
-├── config/                 Case/Config 层 (v0.3)
-├── builders/               配置→求解器构建器 (v0.3)
-├── snapshot/               状态快照 (v0.3)
-├── export/                 结果导出 (v0.3)
-├── case_runner.py          run_case() 高层入口 (v0.3)
-├── result_bundle.py        ResultBundle 输出容器 (v0.3)
-├── result_db.py            SQLite 运行历史 (v0.3)
+├── circuit/                电路拓扑是什么
+│   ├── nodes.py            NodeIndexer / NodeBook
+│   ├── elements.py         Branch / VoltageSource / ElementType / ...
+│   ├── model.py            CircuitModel 数据容器
+│   ├── validation.py       电路校验
+│   ├── registry.py         SimulationRegistry 统一对象注册
+│   ├── registry_records.py ElementRecord / SourceRecord / MultiPortRecord
+│   └── probes.py           ProbeManager 探针管理
 │
-├── registry/               ★ v0.4.0 — SimulationRegistry 统一对象注册
-├── probes/                 ★ v0.4.0 — ProbeManager 探针管理
-├── rhs/                    ★ v0.4.0 — RHSEngine RHS 构建
-├── kernel/                 ★ v0.4.0 — MNAKernel G 矩阵/LU 求解
+├── engine/                 怎么一步步求解
+│   ├── linear.py           SparseLinearSolver (SuperLU)
+│   ├── stamping.py         COOStamper / StampingEngine
+│   ├── mna.py              MNAAssembler + MNAKernel
+│   ├── rhs.py              RHSEngine RHS 构建
+│   ├── state.py            DynamicDeviceRuntime 每步状态管理
+│   ├── nonlinear.py        ResolveManager + ResolveEvent
+│   └── simulation.py       TimeStepper + EventRuntime
 │
-├── nodes.py                NodeIndexer / NodeBook
-├── types.py                Branch / VoltageSource / ElementType / ...
-├── stamping.py             COOStamper / StampingEngine
-├── sparse_solver.py        SparseLinearSolver (SuperLU)
-├── validation.py           电路校验
+├── models/                 元件物理模型怎么算
+│   ├── base.py             Device Protocol
+│   ├── multiport.py        MultiPortDevice Protocol
+│   ├── lumped.py           R / L / C / SeriesRL
+│   ├── switches.py         Switch 开关
+│   ├── nonlinear.py        MOA + LPM + PSCAD 导出
+│   ├── sources.py          雷电电流源
+│   ├── lines.py            Bergeron + ULM + Layer 0 导出
+│   ├── fitulm.py           FitULMSpec + FitULMResolver
+│   └── transformers.py     UMEC 变压器
 │
-├── runtime/
-│   ├── __init__.py         DynamicDeviceRuntime
-│   ├── resolve.py          ResolveManager + ResolveEvent
-│   ├── stepper.py          TimeStepper
-│   └── event_runtime.py    ★ v0.4.0 — EventRuntime 每步编排
+├── cases/                  工况怎么进来
+│   ├── schema.py           CaseConfig / SimulationOptions
+│   ├── loader.py           load_case_config()
+│   ├── validator.py        validate_case_config()
+│   ├── defaults.py         SUPPORTED_ELEMENTS / SOURCES / PROBES
+│   ├── element_builder.py  元件构建
+│   ├── source_builder.py   电源构建
+│   ├── probe_builder.py    探针构建
+│   ├── builder.py          build_solver_from_config()
+│   └── runner.py           run_case() 全流程入口
 │
-├── results/
-├── assembly/
-├── devices/                (resistor/inductor/capacitor/switch/series_rl/nonlinear/lpm)
-├── lines/                  (fitulm_resolver ★ v0.3.2 / bergeron / ulm)
-└── transformers/           (umec)
+├── io/                     结果怎么出去
+│   ├── results.py          ResultStore + scale 工具函数
+│   ├── result_bundle.py    ResultBundle 输出容器
+│   ├── database.py         ResultDatabase SQLite 历史
+│   ├── run_id.py           make_run_id()
+│   ├── export.py           NPZ / CSV / JSON 导出
+│   └── snapshot.py         状态快照 save / restore / hash
+│
+└── utils/                  通用工具（预留）
 ```
+
+### v0.4.0 → v0.5.0 导入路径变更
+
+| 旧路径 (v0.4.0) | 新路径 (v0.5.0) |
+|---|---|
+| `from emtp.config import ...` | `from emtp.cases import ...` |
+| `from emtp.builders import ...` | `from emtp.cases import ...` |
+| `from emtp.case_runner import ...` | `from emtp.cases import ...` |
+| `from emtp.export import ...` | `from emtp.io import ...` |
+| `from emtp.result_db import ...` | `from emtp.io import ...` |
+| `from emtp.snapshot import ...` | `from emtp.io import ...` |
+| `from emtp.devices import ...` | `from emtp.models import ...` |
+| `from emtp.lines import ...` | `from emtp.models import ...` |
+| `from emtp.transformers import ...` | `from emtp.models import ...` |
+| `from emtp.registry import ...` | `from emtp.circuit import ...` |
+| `from emtp.probes import ...` | `from emtp.circuit import ...` |
+| `from emtp.types import ...` | `from emtp.circuit.elements import ...` |
+| `from emtp.nodes import ...` | `from emtp.circuit.nodes import ...` |
+| `from emtp.stamping import ...` | `from emtp.engine.stamping import ...` |
+| `from emtp.rhs import ...` | `from emtp.engine.rhs import ...` |
+| `from emtp.kernel import ...` | `from emtp.engine.mna import ...` |
+| `from emtp.runtime import ...` | `from emtp.engine.state import ...` |
 
 ---
 
@@ -243,7 +280,7 @@ pytest tests/ -q --ignore=tests/test_tower_case_p1.py
 |------|---------|------|
 | 基础 | `test_basic_mna`, `test_trapezoidal_rlc`, `test_switches`, `test_nodes` | MNA/RLC/SW |
 | 物理验证 | `test_p5_basic_physics`, `test_p5_*` | RC/RL/Bergeron/ULM/UMEC/MOA/LPM |
-| API 回归 | `test_solver_regression` (38 tests) | getter/probe/validate/pre_sample/rhs_plan |
+| API 回归 | `test_solver_regression` (56 tests) | getter/probe/validate/pre_sample/rhs_plan |
 | 协议 | `test_multiport_contract`, `test_bergeron_adapter`, `test_ulm_umec_adapters`, `test_multiport_registry` | Device/MultiPortDevice |
 | 运行时 | `test_result_store`, `test_mna_assembler`, `test_circuit_model`, `test_import_canonical_paths` | ResultStore/MNA/Circuit/import |
 | 配置层 | `test_case_config` (22 tests) | load/validate/build/run_case |
@@ -259,19 +296,16 @@ pytest tests/ -q --ignore=tests/test_tower_case_p1.py
 ```
 emtp/solver.py
   ├── numpy, scipy.sparse           (数值计算)
-  ├── emtp/runtime/                 (DynamicDeviceRuntime, ResolveManager, TimeStepper)
-  ├── emtp/results/                 (ResultStore, helper functions)
-  ├── emtp/devices/                 (Device + MultiPortDevice Protocol)
-  ├── emtp/lines/                   (Bergeron, ULM adapters)
-  ├── emtp/transformers/            (UMEC adapter)
-  ├── emtp/assembly/                (MNAAssembler)
-  ├── emtp/snapshot/                (Snapshot save/restore)
+  ├── emtp/circuit/                 (NodeIndexer, Branch, ElementType, CircuitModel, Registry, Probes)
+  ├── emtp/engine/                  (MNAKernel, RHSEngine, DynamicDeviceRuntime, ResolveManager, TimeStepper, SparseLinearSolver)
+  ├── emtp/models/                  (Device + MultiPortDevice Protocol, all element adapters)
+  ├── emtp/io/                      (ResultStore, export, snapshot, database, run_id)
   │
-  ├── [可选] transmission_line_emtp_v2.py       Bergeron 底层模型
-  ├── [可选] ulm_transmission_line_PARA.py      ULM 底层模型 + batch
-  ├── [可选] umec_transformer.py                UMEC 底层模型
-  ├── [可选] nonlinear_models_pscad.py          MOA + LPM
-  └── [可选] atp_lightning_current_generator.py 雷电电流源
+  ├── [可选] transmission_line_emtp_v2.py       Bergeron 底层模型 (via models/lines.py)
+  ├── [可选] ulm_transmission_line_PARA.py      ULM 底层模型 + batch (via models/lines.py)
+  ├── [可选] umec_transformer.py                UMEC 底层模型 (via models/transformers.py)
+  ├── [可选] nonlinear_models_pscad.py          MOA + LPM (via models/nonlinear.py)
+  └── [可选] atp_lightning_current_generator.py 雷电电流源 (via models/sources.py)
 ```
 
 ---
@@ -289,11 +323,12 @@ emtp/solver.py
 | v0.3.2 | `866e210` | **LCP 集成**: fitULM 自动生成, solver.add_ULM_line(), pylcp 包 (289 tests) |
 | v0.3.3 | `735cfdf` | **P0 修复 ×8**: verify/缓存/length/P_matrix/Y块对角 等 (309 tests) |
 | v0.4.0 | `d05a9eb` | **PR0–PR7 重构**: registry/probes/rhs/kernel/event_runtime + 安全网 136 tests (445 tests) |
+| v0.5.0 | `55a1e79` | **目录重组**: 16 碎片目录 → 6 强边界目录；import 路径全部更新 |
 
 ---
 
 ## 文档
 
-- [API Migration Guide](API_MIGRATION.md) — 旧→新导入路径
+- [API Migration Guide](API_MIGRATION.md) — v0.4.0 → v0.5.0 导入路径变更
 - [Direction Conventions](DIRECTION_CONVENTIONS.md) — 符号、单位和 stamping 约定
 - [Architecture](ARCHITECTURE.md) — 详细架构文档

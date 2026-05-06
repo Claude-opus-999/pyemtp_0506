@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from emtp.results import ResultStore
-from emtp.nodes import NodeIndexer
+from emtp.io.results import ResultStore
+from emtp.circuit.nodes import NodeIndexer
 
 
 class TestResultStore:
