@@ -153,6 +153,7 @@ from emtp.models.lines import ULMLineDevice
 from emtp.models.fitulm import FitULMSpec, FitULMResolver
 from emtp.models.transformers import UMECTransformerDevice
 from emtp.circuit import SimulationRegistry, ElementRecord, SourceRecord, MultiPortRecord
+from emtp.circuit.model import CircuitModel
 from emtp.circuit.probes import ProbeManager
 from emtp.engine.rhs import RHSEngine
 from emtp.engine.mna import MNAKernel
@@ -323,14 +324,18 @@ class EMTPSolver:
         self._lines_compiled: bool = False
 
         # ---- 元件存储 ----
-        self.branches: Dict[str, Branch] = {}
-        self._devices: List[Device] = []
-        self._multiport_devices: List[Any] = []
-        self.current_sources: Dict[str, CurrentSource] = {}
-        self.voltage_sources: Dict[str, VoltageSource] = {}
-        self.transmission_lines: Dict[str, TransmissionLineInterface] = {}
-        self.transformers: Dict[str, 'UMECTransformer'] = {}
-        self.lines: Dict[str, LineData] = {}  # 兼容旧版
+        # ---- circuit model (single source of truth) ----
+        self.circuit = CircuitModel()
+
+        # ---- element storage (aliases to circuit containers) ----
+        self.branches = self.circuit.branches
+        self._devices = self.circuit.devices
+        self._multiport_devices = self.circuit.multiport_devices
+        self.current_sources = self.circuit.current_sources
+        self.voltage_sources = self.circuit.voltage_sources
+        self.transmission_lines = self.circuit.transmission_lines
+        self.transformers = self.circuit.transformers
+        self.lines = self.circuit.lines
 
         # ---- 节点管理 ----
         self.num_nodes: int = 0
