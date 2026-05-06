@@ -141,7 +141,6 @@ ULM_AVAILABLE = ULMLine is not None
 UMEC_AVAILABLE = UMECTransformer is not None
 
 
-
 # ---------------------------------------------------------------------------
 
 class EMTPSolver:
@@ -251,7 +250,6 @@ class EMTPSolver:
         self.use_rhs_plan = bool(use_rhs_plan)
         self.use_multiport_lines = bool(use_multiport_lines)
         self.use_multiport_transformers = bool(use_multiport_transformers)
-        self._active_mna_solver_name = _SPARSE_SOLVER_NAME
         if self.ulm_batch_mode not in {'auto', 'parallel', 'serial', 'off'}:
             raise ValueError(
                 "ulm_batch_mode 必须是 'auto'、'parallel'、'serial' 或 'off'，"
@@ -2653,7 +2651,6 @@ class EMTPSolver:
     def _reset_caches(self) -> None:
         """重置所有矩阵缓存。"""
         self._stamping.mark_dirty()
-        self._active_mna_solver_name = _SPARSE_SOLVER_NAME
         self._vs_list = None
         self._vs_index_map = None
         # rhs_buf now owned by rhs_engine
@@ -2821,7 +2818,6 @@ class EMTPSolver:
         vs = self.voltage_sources[name]
         V = np.array([vs.voltage_at(t) for t in self.time_array])
         return {'kV': V / 1e3, 'mV': V * 1e3}.get(unit, V)
-
 
 
     # ---- 传输线结果 ----
