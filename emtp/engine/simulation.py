@@ -55,33 +55,37 @@ class EventRuntime:
     Parameters
     ----------
     solver: EMTPSolver
-        The owning solver.  Will be replaced with explicit
-        registry/kernel/rhs/probe dependencies in a later PR.
+        The owning solver.  Delegate reference; will be replaced
+        with explicit registry/kernel/rhs/probe dependencies.
     """
 
     def __init__(self, solver):
         self._solver = solver
+        self._steps_executed: int = 0
+        self._event_count: int = 0
 
     # -----------------------------------------------------------------
-    # Public API — called once per time step
+    # Public API
     # -----------------------------------------------------------------
 
     def step(self, step_idx: int, n_steps: int, perf_counter) -> None:
-        """Execute one full time step, from switch checks through
-        history advance.  Identical semantics to solver._run_one_step().
-        """
+        """Execute one full time step — delegates to solver._run_one_step."""
         self._solver._run_one_step(step_idx, n_steps, perf_counter)
+        self._steps_executed += 1
 
     # -----------------------------------------------------------------
-    # Sub-step accessors (delegated to solver internals for now)
+    # Sub-step accessors
     # -----------------------------------------------------------------
 
     def pre_step_switches(self) -> bool:
         """Check timed switch events; return True if topology changed."""
         s = self._solver
-        return s._runtime.step_pre_solve(
+        changed = s._runtime.step_pre_solve(
             s.time, s._devices, set(s._lpm_elements),
         )
+        if changed:
+            self._event_count += 1
+        return changed
 
     def post_solve_update(self, V: "np.ndarray", step_idx: int, n_steps: int) -> None:
         """Update branch voltages and currents from solution."""
@@ -102,3 +106,19 @@ class EventRuntime:
             getattr(s, '_line_devices', {}),
             s.transformers,
         )
+
+    # -----------------------------------------------------------------
+    # Diagnostics
+    # -----------------------------------------------------------------
+
+    @property
+    def steps_executed(self) -> int:
+        return self._steps_executed
+
+    @property
+    def event_count(self) -> int:
+        return self._event_count
+
+    def reset_counters(self) -> None:
+        self._steps_executed = 0
+        self._event_count = 0

@@ -294,22 +294,22 @@ class EMTPSolver:
         # 内部自动转换为整数节点供 MNA 装配使用。
         self.nodes = NodeBook(start=1)
 
-        # ---- 统一对象注册中心 (PR2: shadow mode) ----
+        # ---- circuit registry ----
         self.registry = SimulationRegistry(
             node_book=self.nodes,
             node_indexer=self._indexer,
         )
 
-        # ---- 探针管理 (PR3) ----
+        # ---- probe manager ----
         self.probe_manager = ProbeManager()
 
-        # ---- RHS 引擎 (PR4) ----
+        # ---- RHS engine ----
         self.rhs_engine = RHSEngine(self)
 
-        # ---- MNA Kernel (PR5) ----
+        # ---- MNA kernel ----
         self.kernel = MNAKernel(self)
 
-        # ---- Event Runtime (PR6) ----
+        # ---- event runtime ----
         self.event_runtime = EventRuntime(self)
 
         # ---- 轻量探针记录 ----
