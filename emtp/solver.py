@@ -468,6 +468,7 @@ class EMTPSolver:
         self._vs_list = None
         self._vs_index_map = None
         self._rhs_plan_dirty = True
+        self.kernel.mark_dirty(reason)
         if not getattr(self, "_is_running", False):
             self._invalidate_results()
         if self.verbose and reason:

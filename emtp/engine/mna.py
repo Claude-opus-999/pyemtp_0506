@@ -126,13 +126,14 @@ class MNAKernel:
     Parameters
     ----------
     solver: EMTPSolver
-        The owning solver.  The kernel reads the solver's registry,
-        indexer, and stamping engine.  This reference will be replaced
-        with explicit dependencies in a later PR.
+        The owning solver.  This reference is used as a facade until
+        explicit dependencies (stamping_engine, stats) are wired in a
+        later PR.
     """
 
     def __init__(self, solver):
         self._solver = solver
+        self._dirty_reasons: list[str] = []
 
     # -----------------------------------------------------------------
     # Public API
@@ -151,6 +152,7 @@ class MNAKernel:
             s._build_MNA_matrix()
             s._cached_MNA = eng.cached_MNA
             s._stats['G_rebuilds'] = s._stats.get('G_rebuilds', 0) + 1
+            self._dirty_reasons.clear()
         else:
             s._cached_MNA = eng.cached_MNA
             s._stats['G_cache_hits'] = s._stats.get('G_cache_hits', 0) + 1
@@ -159,6 +161,10 @@ class MNAKernel:
     def solve(self, MNA: "sp.csc_matrix", rhs: "np.ndarray") -> "np.ndarray":
         """Solve MNA · x = rhs using the current LU factorization."""
         return self._solver._solve_mna(MNA, rhs)
+
+    # -----------------------------------------------------------------
+    # Dirty detection
+    # -----------------------------------------------------------------
 
     @property
     def is_dirty(self) -> bool:
@@ -170,6 +176,25 @@ class MNAKernel:
         """The most recently assembled MNA matrix (or None)."""
         return self._solver._stamping._cached_MNA
 
-    def mark_dirty(self) -> None:
+    def mark_dirty(self, reason: str = "") -> None:
         """Force a matrix rebuild on the next ensure_matrix() call."""
         self._solver._stamping.mark_dirty()
+        if reason:
+            self._dirty_reasons.append(reason)
+
+    @property
+    def dirty_reasons(self) -> list[str]:
+        """Reasons for the most recent dirty events (diagnostics)."""
+        return list(self._dirty_reasons)
+
+    # -----------------------------------------------------------------
+    # Statistics (delegated to solver._stats for now)
+    # -----------------------------------------------------------------
+
+    @property
+    def rebuild_count(self) -> int:
+        return self._solver._stats.get('G_rebuilds', 0)
+
+    @property
+    def cache_hit_count(self) -> int:
+        return self._solver._stats.get('G_cache_hits', 0)
