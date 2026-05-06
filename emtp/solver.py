@@ -2051,69 +2051,8 @@ class EMTPSolver:
         )
 
     def _run_one_step(self, step_idx: int, n_steps: int, _t) -> None:
-        """Execute a single time step (called by :class:`TimeStepper`)."""
-        self.time = step_idx * self.dt
-
-        # 1. switch events
-        t0 = _t()
-        if self._runtime.step_pre_solve(
-            self.time, self._devices, set(self._lpm_elements),
-        ):
-            self.mark_topology_changed("switch event")
-        t1 = _t()
-        self._timing['switch_update'] += t1 - t0
-
-        # 2. core solve
-        V = self._solve_step()
-        t2 = _t()
-        self._timing['solve_step_total'] += t2 - t1
-
-        # 3. branch V/I update (MUST precede probes)
-        self._runtime.step_post_solve_V_I(
-            V, self._devices, self._indexer,
-            step_idx, n_steps,
-            bool(getattr(self, 'record_branch_history', False)),
-            self._branch_v_bufs, self._branch_i_bufs,
-        )
-        t3 = _t()
-        self._timing['branch_update'] += t3 - t2
-
-        # 4. probe / time / voltage recording (before history update
-        #    so that L/C/SRL probes see current-step Ihist)
-        self._record_probes(step_idx, V)
-        self._time_array_buf[step_idx] = self.time
-        if self._voltage_buf is not None:
-            self._voltage_buf[:, step_idx] = V
-
-        self._update_source_history()
-
-        if self.record_source_history:
-            for name, vs in self.voltage_sources.items():
-                vs.current_history.append(vs.current)
-                if name in self._vs_current_bufs:
-                    self._vs_current_bufs[name][step_idx] = vs.current
-
-        t_probe = _t()
-        self._timing['probe_store'] += t_probe - t3
-
-        # 5. transmission lines
-        self._update_lines_combined(V)
-        t4 = _t()
-        self._timing['line_combined_update'] += t4 - t_probe
-
-        # 6. branch reactive history (after probes, after lines)
-        self._runtime.step_post_solve_history(self._devices)
-
-        # 7. transformer history
-        self._update_transformer_history(V)
-        t5 = _t()
-        self._timing['transformer_history'] += t5 - t4
-
-        self._timing['data_store'] += _t() - t5
-
-        self.step_count += 1
-        self._stats['total_steps'] += 1
-
+        """Execute a single time step — delegated to EventRuntime."""
+        self.event_runtime._step_impl(step_idx, n_steps, _t)
     # =========================================================================
     # 状态更新
     # =========================================================================
